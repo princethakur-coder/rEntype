@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 // Mock data for demonstration
 const mockLeaderboardData = [
-  { id: 1, rank: 1, username: 'PrinceThakur', wpm: 148, accuracy: 98.7, tests: 253 },
+  { id: 1, rank: 1, username: 'Prince', wpm: 148, accuracy: 98.7, tests: 253 },
   { id: 2, rank: 2, username: 'Rahul', wpm: 142, accuracy: 97.5, tests: 178 },
   { id: 3, rank: 3, username: 'Shubham', wpm: 136, accuracy: 96.8, tests: 321 },
   { id: 4, rank: 4, username: 'Sumit', wpm: 131, accuracy: 98.2, tests: 145 },

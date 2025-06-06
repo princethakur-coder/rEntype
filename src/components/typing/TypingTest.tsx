@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Play, Pause, BarChart2 } from 'lucide-react';
+import { RefreshCw, Play, Pause, BarChart2, Timer } from 'lucide-react';
 import TypingMetrics from './TypingMetrics';
 import { useSampleText } from '../../hooks/useSampleText';
 
@@ -38,11 +38,14 @@ const TypingTest: React.FC<TypingTestProps> = ({
   const [completed, setCompleted] = useState(false);
   const [wpm, setWpm] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
+  const [timeLimit, setTimeLimit] = useState<number>(60); // Default 1 minute
+  const [remainingTime, setRemainingTime] = useState<number>(60);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle keyboard events
+  // Handle keyboard events for both desktop and mobile
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isActive && !completed) {
@@ -50,36 +53,74 @@ const TypingTest: React.FC<TypingTestProps> = ({
       }
       
       if (completed) return;
+
+        // Only process printable characters
+        if (e.key === ' ') {
+          e.preventDefault(); // <--- Add this line to stop scrolling
+        }
       
       // Only process printable characters
-      if (e.key === ' ') {
-        e.preventDefault(); // <--- Add this line to stop scrolling
-      }
-      
       if (e.key.length === 1) {
         const value = input + e.key;
         handleInputChange(value);
       } else if (e.key === 'Backspace') {
         handleInputChange(input.slice(0, -1));
-      }      
+      }
+    };
+
+    // Handle mobile input
+    const handleMobileInput = (e: Event) => {
+      const inputElement = e.target as HTMLInputElement;
+      handleInputChange(inputElement.value);
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    if (inputRef.current) {
+      inputRef.current.addEventListener('input', handleMobileInput);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (inputRef.current) {
+        inputRef.current.removeEventListener('input', handleMobileInput);
+      }
+    };
   }, [isActive, completed, input, text]);
+
+  // Timer countdown
+  useEffect(() => {
+    if (isActive && !completed) {
+      timerRef.current = setInterval(() => {
+        setRemainingTime(prev => {
+          if (prev <= 1) {
+            completeTest();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isActive, completed]);
 
   // Start the test
   const handleStart = useCallback(() => {
     if (!isActive && !completed) {
       setIsActive(true);
       setStartTime(Date.now());
+      setRemainingTime(timeLimit);
       
       // Focus the input field
       if (inputRef.current) {
         inputRef.current.focus();
       }
     }
-  }, [isActive, completed]);
+  }, [isActive, completed, timeLimit]);
 
   // Calculate metrics
   const calculateMetrics = useCallback(() => {
@@ -177,6 +218,10 @@ const TypingTest: React.FC<TypingTestProps> = ({
         onComplete(results);
       }
     }
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
   };
 
   // Reset the test
@@ -192,6 +237,7 @@ const TypingTest: React.FC<TypingTestProps> = ({
     setCompleted(false);
     setWpm(0);
     setAccuracy(100);
+    setRemainingTime(timeLimit);
     
     fetchNewText();
   };
@@ -200,6 +246,13 @@ const TypingTest: React.FC<TypingTestProps> = ({
   const togglePause = () => {
     if (completed) return;
     setIsActive(prev => !prev);
+  };
+
+  // Format remaining time
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   // Render text with appropriate styling
@@ -246,25 +299,47 @@ const TypingTest: React.FC<TypingTestProps> = ({
     <div className="card max-w-3xl mx-auto">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold">Typing Test</h2>
-        <div className="flex space-x-2">
-          <button
-            onClick={resetTest}
-            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Reset test"
-          >
-            <RefreshCw size={18} />
-          </button>
-          {!completed && (
-            <button
-              onClick={togglePause}
-              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              aria-label={isActive ? "Pause test" : "Resume test"}
-              disabled={!startTime && !isActive}
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Timer className="h-5 w-5 text-gray-500" />
+            <select
+              value={timeLimit}
+              onChange={(e) => {
+                setTimeLimit(Number(e.target.value));
+                setRemainingTime(Number(e.target.value));
+              }}
+              className="input py-1 px-2"
+              disabled={isActive || completed}
             >
-              {isActive ? <Pause size={18} /> : <Play size={18} />}
+              <option value={30}>30s</option>
+              <option value={60}>1min</option>
+              <option value={300}>5min</option>
+            </select>
+          </div>
+          <div className="flex space-x-2">
+            <button
+              onClick={resetTest}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              aria-label="Reset test"
+            >
+              <RefreshCw size={18} />
             </button>
-          )}
+            {!completed && (
+              <button
+                onClick={togglePause}
+                className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label={isActive ? "Pause test" : "Resume test"}
+                disabled={!startTime && !isActive}
+              >
+                {isActive ? <Pause size={18} /> : <Play size={18} />}
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div className="text-xl font-mono text-center mb-4">
+        {formatTime(remainingTime)}
       </div>
 
       <TypingMetrics 
